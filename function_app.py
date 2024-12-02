@@ -10,10 +10,10 @@ import azure.functions as func
 
 app = func.FunctionApp()
 
-# TODO: Configure what happens when VM's are registered but unhealthy. Set them to draining
-# TODO: Configure VM's are not registered but are unhealthy.
-# TODO: What happens when a VM is registered but not connected. Solution: Set it as draining
-# TODO: What happens when there are VM's that are not registered but exist in the scale set.
+# TODO: Set VM's are registered but unhealthy to draining for termination
+# TODO: Delete VM's are not registered but are unhealthy.
+# TODO: VM is registered but not connected. Solution: Set it as draining
+# TODO: VM's that are not registered but exist in the scale set. Terminate them
 
 
 @app.timer_trigger(
@@ -129,7 +129,9 @@ class StackGuardianAutoscaler:
             for sg_runner in draining_virtual_machines:
                 self.update_sg_runner_status(sg_runner, "ACTIVE")
             self.cloud_service.set_autoscale_vms(
-                self.SCALE_OUT_STEP - len(draining_virtual_machines),
+                self.cloud_service.vmss.sku.capacity
+                + self.SCALE_OUT_STEP
+                - len(draining_virtual_machines),
             )
             has_scaled_out = True
 
@@ -180,40 +182,35 @@ class StackGuardianAutoscaler:
             logging.debug("skipping due to last scale in event")
             return
 
-        sg_runners = self._fetch_sg_runners()
-
-        if len(sg_runners) <= self.MIN_VMSS_VMS:
-            return
-
-        if len(sg_runners) < scale_in_step:
-            scale_in_step = len(sg_runners)
-
         # add protection to newly spawned vm's
         for vm in self.cloud_service.vmss_vms:
             self.cloud_service.add_scale_in_protection(vm)
 
         vms_draining = self.fetch_vms_in_draining_state()
+        sg_runners = self._fetch_sg_runners()
 
         active_drainable_vms = (
-            len(self._fetch_sg_runners())
-            - len(vms_draining)
-            - self.MIN_VMSS_VMS
+            len(sg_runners) - len(vms_draining) - self.MIN_VMSS_VMS
         )
+
+        if active_drainable_vms < scale_in_step:
+            scale_in_step = active_drainable_vms
+
         has_scaled_in = False
         if active_drainable_vms > 0:
-            drain_count = scale_in_step
+            drain_count = min(scale_in_step, active_drainable_vms)
             for sg_runner in sg_runners:
-                if drain_count == 0 or active_drainable_vms == 0:
+                if drain_count == 0:
                     break
 
                 if sg_runner.get("status") != "DRAINING":
-                    drain_count -= 1
-                    active_drainable_vms -= 1
-                    has_scaled_in = True
                     self.update_sg_runner_status(sg_runner, "DRAINING")
+                    drain_count -= 1
+                    has_scaled_in = True
 
             # if there was a runner set to draining or scaled in
             if has_scaled_in:
+                logging.info("scaled in {}".format(scale_in_step - drain_count))
                 self.cloud_service.set_last_scale_in_event(
                     datetime.datetime.now()
                 )
@@ -223,6 +220,9 @@ class StackGuardianAutoscaler:
     def terminate_vms(self):
         logging.info("terminating VM's")
         sg_runner_draining: Dict = self.fetch_vms_in_draining_state()
+        if len(sg_runner_draining) == 0:
+            return
+
         count = 0
         for sg_runner in sg_runner_draining:
             if (

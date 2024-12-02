@@ -266,10 +266,3 @@ class AzureService:
                 last_scale_out_timestamp
             )
             return timestamp
-
-
-if __name__ == "__main__":
-    cloud_service = AzureService()
-
-    cloud_service.set_last_scale_in_event(datetime.datetime.now())
-    # cloud_service.get_last_scale_in_event()
