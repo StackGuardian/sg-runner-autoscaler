@@ -270,3 +270,6 @@ class AzureService:
                 last_scale_out_timestamp
             )
             return timestamp
+
+    def count_of_existing_vms(self) -> int:
+        return self.vmss.sku.capacity
