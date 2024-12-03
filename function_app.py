@@ -17,7 +17,7 @@ app = func.FunctionApp()
 
 
 @app.timer_trigger(
-    schedule="* * * * * *",
+    schedule="0 * * * * *",
     arg_name="myTimer",
     run_on_startup=False,
     use_monitor=False,
@@ -40,7 +40,7 @@ class StackGuardianAutoscaler:
         self.SCALE_OUT_THRESHOLD = int(os.getenv("SCALE_OUT_THRESHOLD"))
         self.SCALE_OUT_STEP = int(os.getenv("SCALE_OUT_STEP"))
 
-        self.MIN_VMSS_VMS = 0
+        self.MIN_RUNNERS = 0
 
         self.SG_ORG = os.getenv("SG_ORG")
         self.SG_RUNNER_GROUP = os.getenv("SG_RUNNER_GROUP")
@@ -60,10 +60,12 @@ class StackGuardianAutoscaler:
         self.refresh_queued_jobs()
 
     def start(self):
-        logging.info("starting the autoscale script")
+        logging.info("STACKGUARDIAN: starting the autoscale script")
+        sg_runners = self._fetch_sg_runners()
         if (
             self.queued_jobs >= self.SCALE_OUT_THRESHOLD
-            or len(self._fetch_sg_runners()) == 0
+            or len(sg_runners) < self.MIN_RUNNERS
+            or (self.queued_jobs > 0 and len(sg_runners) == 0)
         ):
             self.scale_out()
             # incase there are any draining VM's left to delete even after scaling out depending on the scale_out_step and scale_in_step.
@@ -103,7 +105,14 @@ class StackGuardianAutoscaler:
         self.queued_jobs = queued_jobs
 
     def scale_out(self):
-        logging.info("scaling out")
+        logging.info(
+            "STACKGUARDIAN: scale out: queued jobs {}, number of sg runners {}, min runners {}, scale out threshold {}".format(
+                self.queued_jobs,
+                len(self._fetch_sg_runners()),
+                self.MIN_RUNNERS,
+                self.SCALE_OUT_THRESHOLD,
+            )
+        )
 
         # cooldown
         last_scale_out_timestamp = self.cloud_service.get_last_scale_out_event()
@@ -112,6 +121,11 @@ class StackGuardianAutoscaler:
             timestamp_now - last_scale_out_timestamp
             < self.scale_in_cooldown_duration
         ):
+            logging.info(
+                "STACKGUARDIAN: waiting for cooldown last scale out event {}".format(
+                    last_scale_out_timestamp.isoformat()
+                )
+            )
             return
 
         # Check if there are VM's in draining state
@@ -142,11 +156,10 @@ class StackGuardianAutoscaler:
 
     def update_sg_runner_status(self, sg_runner: Dict, status: str):
         logging.info(
-            "updating runner status {} to {}".format(
-                sg_runner.get("instanceDetails")[0].get("ContainerName"), status
+            "STACKGUARDIAN: updating runner VM status {} to {}".format(
+                sg_runner.get("instanceDetails")[0].get("ComputerName"), status
             )
         )
-        """Adds scale in protection policy for vm"""
         payload = {"Status": status, "RunnerId": sg_runner.get("runnerId")}
 
         headers = {"Authorization": "apikey {}".format(self.SG_API_KEY)}
@@ -170,7 +183,18 @@ class StackGuardianAutoscaler:
         return vms_draining
 
     def scale_in(self, scale_in_step):
-        logging.info("scale in")
+        if len(self._fetch_sg_runners()) == 0:
+            logging.info("STACKGUARDIAN: no runners exist to scale in")
+            return
+
+        logging.info(
+            "STACKGUARDIAN scale in: queued jobs {}, number of sg runners {}, min runners {}, scale in threshold {}".format(
+                self.queued_jobs,
+                len(self._fetch_sg_runners()),
+                self.MIN_RUNNERS,
+                self.SCALE_IN_THRESHOLD,
+            )
+        )
 
         # Cool down for scale in
         last_scale_in_timestamp = self.cloud_service.get_last_scale_in_event()
@@ -179,7 +203,11 @@ class StackGuardianAutoscaler:
             timestamp_now - last_scale_in_timestamp
             < self.scale_in_cooldown_duration
         ):
-            logging.debug("skipping due to last scale in event")
+            logging.info(
+                "STACKGUARDIAN: waiting for cooldown last scale in event {}".format(
+                    last_scale_in_timestamp.isoformat()
+                )
+            )
             return
 
         # add protection to newly spawned vm's
@@ -190,7 +218,7 @@ class StackGuardianAutoscaler:
         sg_runners = self._fetch_sg_runners()
 
         active_drainable_vms = (
-            len(sg_runners) - len(vms_draining) - self.MIN_VMSS_VMS
+            len(sg_runners) - len(vms_draining) - self.MIN_RUNNERS
         )
 
         if active_drainable_vms < scale_in_step:
@@ -208,9 +236,13 @@ class StackGuardianAutoscaler:
                     drain_count -= 1
                     has_scaled_in = True
 
-            # if there was a runner set to draining or scaled in
+            # if there was a runner set to draining
             if has_scaled_in:
-                logging.info("scaled in {}".format(scale_in_step - drain_count))
+                logging.info(
+                    "STACKGUARDIAN: scaled in {}".format(
+                        scale_in_step - drain_count
+                    )
+                )
                 self.cloud_service.set_last_scale_in_event(
                     datetime.datetime.now()
                 )
@@ -218,7 +250,8 @@ class StackGuardianAutoscaler:
             self.refresh_sg_runner_group()
 
     def terminate_vms(self):
-        logging.info("terminating VM's")
+        logging.info("STACKGUARDIAN: terminating VM's")
+
         sg_runner_draining: Dict = self.fetch_vms_in_draining_state()
         if len(sg_runner_draining) == 0:
             return
@@ -230,8 +263,6 @@ class StackGuardianAutoscaler:
                 and sg_runner["pendingTasksCount"] == 0
             ):
                 count += 1
-                # TODO: replace this check with computer name
-                # send the computer name to azure service for the protection to be removed
                 self.cloud_service.remove_scale_in_protection(sg_runner)
                 self.deregister_sg_runner(sg_runner)
         if count > 0:
@@ -241,7 +272,9 @@ class StackGuardianAutoscaler:
 
     def deregister_sg_runner(self, sg_runner: Dict):
         logging.info(
-            "deregistering sg runner {}",
+            "STACKGUARDIAN: deregistering sg runner {}".format(
+                sg_runner.get("instanceDetails")[0].get("ComputerName")
+            )
         )
         payload = {"RunnerId": sg_runner.get("runnerId")}
 

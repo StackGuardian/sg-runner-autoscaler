@@ -73,7 +73,7 @@ class AzureService:
             raise e
 
     def _fetch_vmss(self) -> VirtualMachineScaleSet:
-        logging.info("fetch vmss")
+        logging.info("STACKGUARDIAN: fetch vmss")
         try:
             vmss = self.compute_client.virtual_machine_scale_sets.get(
                 self.AZURE_RESOURCE_GROUP_NAME, self.AZURE_VMSS_NAME
@@ -108,7 +108,7 @@ class AzureService:
             raise e
 
     def fetch_blob_content(self, blob_name: str) -> str:
-        logging.info("fetch blob content {}".format(blob_name))
+        logging.info("STACKGUARDIAN: fetch blob content {}".format(blob_name))
         try:
             # Get a reference to the blob
             blob_client = self.container_client.get_blob_client(blob_name)
@@ -119,20 +119,21 @@ class AzureService:
             # Read the blob content (assuming it's a text file for this example)
             content = download_stream.readall()
 
-            # If it's binary data, you can save it to a file or handle it differently
-            print("Blob content fetched successfully!")
-            return content.decode(
-                "utf-8"
-            )  # Assuming the content is text (e.g., UTF-8 encoded)
+            decoded_content = content.decode("utf-8")
 
+            # If it's binary data, you can save it to a file or handle it differently
+            logging.info("Blob content fetched successfully!")
+
+            return decoded_content
         except ResourceNotFoundError as e:
+            logging.info("blob {} not found".format(blob_name))
             return None
         except AzureError as e:
-            logging.exception(f"An error occurred: {e}")
+            logging.info(f"STACKGUARDIAN: Error fetching blob {e}")
             raise e
 
     def upload_blob_content(self, blob_name: str, data: str):
-        logging.info("uploading blob")
+        logging.info("STACKGUARDIAN: uploading blob")
         try:
             # Get a reference to the blob (file in the container)
             blob_client = self.container_client.get_blob_client(blob_name)
@@ -142,12 +143,12 @@ class AzureService:
                 data, overwrite=True
             )  # `overwrite=True` will overwrite if the blob already exists
 
-            logging.debug(
-                f"Blob '{blob_name}' uploaded successfully to container."
+            logging.info(
+                f"STACKGUARDIAN: Blob '{blob_name}' uploaded successfully to container."
             )
 
         except AzureError as e:
-            logging.exception(f"An error occurred: {e}")
+            logging.info(f"STACKGUARDIAN: An error occurred: {e}")
             raise e
 
     def update_vmss_vm(
@@ -165,19 +166,19 @@ class AzureService:
                 )
             )
 
-            logging.debug(
-                f"Scale-in protection has been enabled for VM: {vm.name}"
+            logging.info(
+                f"STACKGUARDIAN: Scale-in protection has been enabled for VM: {vm.name}"
             )
 
         except AzureError as e:
-            logging.exception(
-                f"An error occurred while modifying scale-in protection: {str(e)}"
+            logging.info(
+                f"STACKGUARDIAN: An error occurred while modifying scale-in protection: {str(e)}"
             )
             raise e
 
     def set_autoscale_vms(self, count):
         """Reduce scale set sku capacity"""
-        logging.info("change scale set capacity")
+        logging.info("STACKGUARDIAN: set number of VM's to {}".format(count))
         # Update the VMSS instance count
         self.vmss.sku.capacity = count
 
@@ -196,7 +197,11 @@ class AzureService:
         return False
 
     def add_scale_in_protection(self, vm: VirtualMachineScaleSetVM):
-        logging.info("add scale in protection to {}".format(vm.instance_id))
+        logging.info(
+            "STACKGUARDIAN: add scale in protection to {}".format(
+                vm.instance_id
+            )
+        )
         if not self._is_vm_scale_in_protected(vm):
             vm.protection_policy = VirtualMachineScaleSetVMProtectionPolicy(
                 protect_from_scale_in=True
@@ -214,7 +219,7 @@ class AzureService:
 
     def remove_scale_in_protection(self, sg_runner: Dict):
         logging.info(
-            "remove scale in protection from {}".format(
+            "STACKGUARDIAN: remove scale in protection from {}".format(
                 sg_runner.get("instanceDetails")[0].get("ComputerName")
             )
         )
@@ -232,7 +237,7 @@ class AzureService:
             self.update_vmss_vm(vm)
 
     def set_last_scale_in_event(self, timestamp: datetime.datetime):
-        logging.info("set last scale in event")
+        logging.info("STACKGUARDIAN: set last scale in event")
         self.container_client.upload_blob(
             self.SCALE_IN_TIMESTAMP_BLOB_NAME,
             io.BytesIO(timestamp.isoformat().encode()),
@@ -240,7 +245,6 @@ class AzureService:
         )
 
     def get_last_scale_in_event(self) -> datetime.datetime:
-        logging.info("get last scale in event")
         last_scale_in_timestamp = self.fetch_blob_content(
             self.SCALE_IN_TIMESTAMP_BLOB_NAME
         )
@@ -249,7 +253,7 @@ class AzureService:
             return timestamp
 
     def set_last_scale_out_event(self, timestamp: datetime.datetime):
-        logging.info("set last scale out event")
+        logging.info("STACKGUARDIAN: set last scale out event")
         self.container_client.upload_blob(
             self.SCALE_OUT_TIMESTAMP_BLOB_NAME,
             io.BytesIO(timestamp.isoformat().encode()),
@@ -257,7 +261,7 @@ class AzureService:
         )
 
     def get_last_scale_out_event(self) -> datetime.datetime:
-        logging.info("get last scale out event")
+        logging.info("STACKGUARDIAN: get last scale out event")
         last_scale_out_timestamp = self.fetch_blob_content(
             self.SCALE_OUT_TIMESTAMP_BLOB_NAME
         )
