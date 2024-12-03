@@ -62,10 +62,17 @@ class CloudService(ABC):
 
     @abstractmethod
     def add_scale_in_protection(self, sg_runner: SGRunner):
+        """
+        Add protection so that a scale in event or reduction in the capapcity of
+        a autoscale group does not terminate this VM
+        """
         pass
 
     @abstractmethod
     def remove_scale_in_protection(self, sg_runner: SGRunner):
+        """
+        Remove scale in protection for the VM
+        """
         pass
 
 

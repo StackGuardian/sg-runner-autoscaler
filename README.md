@@ -1,23 +1,10 @@
 # Stackguardian Autoscaler
 
-A module which can be used to autoscale private runners.
-
-## Usage
-
-`stackguradian_autoscaler.py` contains an abstract class `CloudService` which
-needs to be implemented for the cloud service of your choice. An example can be
-found for Azure Cloud in `azure_service.py`
-
-With the required code implemented initialize the StackguardianAutoscaler class
-with the cloud service class and invoke the `start()` method.
-
-# Stackguardian Autoscaler
-
 The **Stackguardian Autoscaler** module provides a template to autoscale stackguardian private runners.
 
 ## Overview
 
-`stackguardian_autoscaler.py` contains an abstract base class, `CloudService`, that defines the interface for autoscaling functionality. To use this module, you'll need to implement the `CloudService` class for your chosen cloud provider.
+`stackguardian_autoscaler.py` contains an abstract base class, `CloudService`, that describes the methods required to interact with the cloud provider. To use this module, you'll need to implement the `CloudService` class for your chosen cloud provider.
 
 An example implementation for **Azure** can be found in the `azure_service.py` file.
 
