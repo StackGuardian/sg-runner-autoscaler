@@ -18,6 +18,8 @@ from azure.mgmt.compute.v2023_09_01.models import (
 )
 from azure.storage.blob import BlobServiceClient
 
+from stackguardian_autoscaler import SGRunner
+
 
 class AzureService:
     def __init__(self):
@@ -37,7 +39,7 @@ class AzureService:
             "SCALE_OUT_TIMESTAMP_BLOB_NAME"
         )
 
-        self.vmss_vms = []
+        self.vmss_vms: List[VirtualMachineScaleSetVM] = None
 
         self.cred = DefaultAzureCredential()
         self.compute_client = ComputeManagementClient(
@@ -69,7 +71,7 @@ class AzureService:
                 vmss_vms.append(vm)
             self.vmss_vms = vmss_vms
         except AzureError as e:
-            print(f"Error retrieving VMSS instances: {str(e)}")
+            logging.info(f"Error retrieving VMSS instances: {str(e)}")
             raise e
 
     def _fetch_vmss(self) -> VirtualMachineScaleSet:
@@ -79,7 +81,7 @@ class AzureService:
                 self.AZURE_RESOURCE_GROUP_NAME, self.AZURE_VMSS_NAME
             )
         except AzureError as e:
-            print(f"Error retrieving VMSS: {self.AZURE_VMSS_NAME}")
+            logging.info(f"Error retrieving VMSS: {self.AZURE_VMSS_NAME}")
             raise e
 
         return vmss
@@ -99,16 +101,18 @@ class AzureService:
                 )
             )
 
-            print(f"Scale-in protection has been enabled for VM: {vm.name}")
+            logging.info(
+                f"Scale-in protection has been enabled for VM: {vm.name}"
+            )
 
         except AzureError as e:
-            print(
+            logging.info(
                 f"An error occurred while modifying scale-in protection: {str(e)}"
             )
             raise e
 
     def fetch_blob_content(self, blob_name: str) -> str:
-        logging.info("STACKGUARDIAN: fetch blob content {}".format(blob_name))
+        logging.info(f"STACKGUARDIAN: fetch blob content {blob_name}")
         try:
             # Get a reference to the blob
             blob_client = self.container_client.get_blob_client(blob_name)
@@ -126,7 +130,7 @@ class AzureService:
 
             return decoded_content
         except ResourceNotFoundError as e:
-            logging.info("blob {} not found".format(blob_name))
+            logging.info(f"blob {blob_name} not found")
             return None
         except AzureError as e:
             logging.info(f"STACKGUARDIAN: Error fetching blob {e}")
@@ -178,7 +182,7 @@ class AzureService:
 
     def set_autoscale_vms(self, count):
         """Reduce scale set sku capacity"""
-        logging.info("STACKGUARDIAN: set number of VM's to {}".format(count))
+        logging.info(f"STACKGUARDIAN: set number of VM's to {count}")
         # Update the VMSS instance count
         self.vmss.sku.capacity = count
 
@@ -189,43 +193,36 @@ class AzureService:
             )
         )
 
-        print(f"VMSS instance count updated to {async_vmss_update}")
+        logging.info(f"VMSS instance count updated to {async_vmss_update}")
 
     def _is_vm_scale_in_protected(self, vm: VirtualMachineScaleSetVM) -> bool:
         if vm.protection_policy != None:
             return vm.protection_policy.protect_from_scale_in
         return False
 
-    def add_scale_in_protection(self, vm: VirtualMachineScaleSetVM):
+    def add_scale_in_protection(self, sg_runner: SGRunner):
         logging.info(
-            "STACKGUARDIAN: add scale in protection to {}".format(
-                vm.instance_id
-            )
+            f"STACKGUARDIAN: add scale in protection to {sg_runner.computer_name}"
         )
+        vm = self._find_azure_vm(sg_runner)
         if not self._is_vm_scale_in_protected(vm):
             vm.protection_policy = VirtualMachineScaleSetVMProtectionPolicy(
                 protect_from_scale_in=True
             )
             self.update_vmss_vm(vm)
 
-    def find_azure_vm(self, sg_runner: Dict):
+    def _find_azure_vm(self, sg_runner: SGRunner) -> VirtualMachineScaleSetVM:
         for vm in self.vmss_vms:
-            if (
-                sg_runner.get("instanceDetails")[0]
-                .get("ComputerName")
-                .startswith(vm.os_profile.computer_name)
-            ):
+            if sg_runner.computer_name.startswith(vm.os_profile.computer_name):
                 return vm
 
-    def remove_scale_in_protection(self, sg_runner: Dict):
+    def remove_scale_in_protection(self, sg_runner: SGRunner):
         logging.info(
-            "STACKGUARDIAN: remove scale in protection from {}".format(
-                sg_runner.get("instanceDetails")[0].get("ComputerName")
-            )
+            f"STACKGUARDIAN: remove scale in protection from {sg_runner.computer_name}"
         )
-        vm: VirtualMachineScaleSetVM = self.find_azure_vm(sg_runner)
+        vm: VirtualMachineScaleSetVM = self._find_azure_vm(sg_runner)
         if vm == None:
-            print(
+            logging.info(
                 f"Azure VM for the stackguardian runner {sg_runner} does not exist"
             )
             return
@@ -270,3 +267,6 @@ class AzureService:
                 last_scale_out_timestamp
             )
             return timestamp
+
+    def count_of_existing_vms(self) -> int:
+        return self.vmss.sku.capacity
