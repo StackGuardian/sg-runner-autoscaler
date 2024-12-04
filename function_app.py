@@ -12,7 +12,7 @@ app = func.FunctionApp()
 
 
 @app.timer_trigger(
-    schedule="0 * * * * *",
+    schedule="* * * * * *",
     arg_name="myTimer",
     run_on_startup=False,
     use_monitor=False,

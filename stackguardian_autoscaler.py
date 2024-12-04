@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-import time
 import requests
 import os
 from datetime import datetime, timedelta
@@ -9,14 +8,18 @@ from typing import List, Dict
 
 class SGRunner:
     def __init__(self, sg_runner: Dict):
-        self.ip_address = sg_runner.get("instanceDetails")[0].get("IPAddress")
-        self.computer_name = sg_runner.get("instanceDetails")[0].get(
+        self.ip_address: str = sg_runner.get("instanceDetails")[0].get(
+            "IPAddress"
+        )
+        self.computer_name: str = sg_runner.get("instanceDetails")[0].get(
             "ComputerName"
         )
-        self.instance_arn = sg_runner.get("containerInstanceArn")
-        self.connection_status = sg_runner.get("agentConnected")
-        self.status = sg_runner.get("status")
-        self.runnerID = sg_runner.get("runnerId")
+        self.instance_arn: str = sg_runner.get("containerInstanceArn")
+        self.connection_status: str = sg_runner.get("agentConnected")
+        self.status: str = sg_runner.get("status")
+        self.runnerID: str = sg_runner.get("runnerId")
+        self.running_tasks_count = sg_runner.get("runningTasksCount")
+        self.pending_tasks_count = sg_runner.get("pendingTasksCount")
         self.sg_runner = sg_runner
 
 
@@ -127,12 +130,7 @@ class StackGuardianAutoscaler:
 
     def scale_out(self):
         logging.info(
-            "STACKGUARDIAN: scale out: queued jobs {}, number of sg runners {}, min runners {}, scale out threshold {}".format(
-                self.queued_jobs,
-                len(self.sg_runners),
-                self.MIN_RUNNERS,
-                self.SCALE_OUT_THRESHOLD,
-            )
+            f"STACKGUARDIAN: scale out: queued jobs {self.queued_jobs}, number of sg runners {len(self.sg_runners)}, min runners {self.MIN_RUNNERS}, scale out threshold {self.SCALE_OUT_THRESHOLD}"
         )
 
         # cooldown
@@ -143,9 +141,7 @@ class StackGuardianAutoscaler:
             < self.scale_in_cooldown_duration
         ):
             logging.info(
-                "STACKGUARDIAN: waiting for cooldown last scale out event {}".format(
-                    last_scale_out_timestamp.isoformat()
-                )
+                f"STACKGUARDIAN: waiting for cooldown last scale out event {last_scale_out_timestamp.isoformat()}"
             )
             return
 
@@ -181,12 +177,7 @@ class StackGuardianAutoscaler:
             return
 
         logging.info(
-            "STACKGUARDIAN scale in: queued jobs {}, number of sg runners {}, min runners {}, scale in threshold {}".format(
-                self.queued_jobs,
-                len(self.sg_runners),
-                self.MIN_RUNNERS,
-                self.SCALE_IN_THRESHOLD,
-            )
+            f"STACKGUARDIAN scale in: queued jobs {self.queued_jobs}, number of sg runners {len(self.sg_runners)}, min runners {self.MIN_RUNNERS}, scale in threshold {self.SCALE_IN_THRESHOLD}"
         )
 
         # Cool down for scale in
@@ -198,9 +189,7 @@ class StackGuardianAutoscaler:
             < self.scale_in_cooldown_duration
         ):
             logging.info(
-                "STACKGUARDIAN: waiting for cooldown last scale in event {}".format(
-                    last_scale_in_timestamp.isoformat()
-                )
+                f"STACKGUARDIAN: waiting for cooldown last scale in event {last_scale_in_timestamp.isoformat()}"
             )
             return
 
@@ -232,9 +221,7 @@ class StackGuardianAutoscaler:
             # if there was a runner set to draining
             if has_scaled_in:
                 logging.info(
-                    "STACKGUARDIAN: scaled in {}".format(
-                        scale_in_step - drain_count
-                    )
+                    f"STACKGUARDIAN: scaled in {scale_in_step - drain_count}"
                 )
                 self.cloud_service.set_last_scale_in_event(datetime.now())
 
@@ -243,15 +230,16 @@ class StackGuardianAutoscaler:
     def terminate_vms(self):
         logging.info("STACKGUARDIAN: terminating VM's")
 
-        sg_runner_draining: Dict = self._fetch_vms_in_draining_state()
+        self._refresh_sg_runner_group()
+        sg_runner_draining = self._fetch_vms_in_draining_state()
         if len(sg_runner_draining) == 0:
             return
 
         count = 0
         for sg_runner in sg_runner_draining:
             if (
-                sg_runner["runningTasksCount"] == 0
-                and sg_runner["pendingTasksCount"] == 0
+                sg_runner.running_tasks_count == 0
+                and sg_runner.pending_tasks_count == 0
             ):
                 count += 1
                 self.cloud_service.remove_scale_in_protection(sg_runner)
@@ -261,31 +249,23 @@ class StackGuardianAutoscaler:
                 self.cloud_service.count_of_existing_vms() - count
             )
 
-    def _deregister_sg_runner(self, sg_runner: Dict):
+    def _deregister_sg_runner(self, sg_runner: SGRunner):
         logging.info(
-            "STACKGUARDIAN: deregistering sg runner {}".format(
-                sg_runner.get("instanceDetails")[0].get("ComputerName")
-            )
+            f"STACKGUARDIAN: deregistering sg runner {sg_runner.computer_name}"
         )
-        payload = {"RunnerId": sg_runner.get("runnerId")}
+        payload = {"RunnerId": sg_runner.runnerID}
 
-        uri = "{}/api/v1/orgs/{}/runnergroups/{}/deregister/".format(
-            self.SG_BASE_URI, self.SG_ORG, self.SG_RUNNER_GROUP
-        )
+        uri = f"{self.SG_BASE_URI}/api/v1/orgs/{self.SG_ORG}/runnergroups/{self.SG_RUNNER_GROUP}/deregister/"
 
-        headers = {"Authorization": "apikey {}".format(self.SG_API_KEY)}
+        headers = {"Authorization": f"apikey {self.SG_API_KEY}"}
 
         res = requests.post(uri, payload, headers=headers)
         res.raise_for_status()
 
     def _refresh_sg_runner_group(self):
-        uri = (
-            "{}/api/v1/orgs/{}/runnergroups/{}/?getActiveWorkflows=true".format(
-                self.SG_BASE_URI, self.SG_ORG, self.SG_RUNNER_GROUP
-            )
-        )
+        uri = f"{self.SG_BASE_URI}/api/v1/orgs/{self.SG_ORG}/runnergroups/{self.SG_RUNNER_GROUP}/?getActiveWorkflows=true"
 
-        headers = {"Authorization": "apikey {}".format(self.SG_API_KEY)}
+        headers = {"Authorization": f"apikey {self.SG_API_KEY}"}
 
         res = requests.get(uri, headers=headers)
         res.raise_for_status()
@@ -309,22 +289,18 @@ class StackGuardianAutoscaler:
 
     def _update_sg_runner_status(self, sg_runner: SGRunner, status: str):
         logging.info(
-            "STACKGUARDIAN: updating runner VM status {} to {}".format(
-                sg_runner.computer_name, status
-            )
+            f"STACKGUARDIAN: updating runner VM status {sg_runner.computer_name} to {sg_runner.status}"
         )
         payload = {"Status": status, "RunnerId": sg_runner.runnerID}
 
-        headers = {"Authorization": "apikey {}".format(self.SG_API_KEY)}
+        headers = {"Authorization": f"apikey {self.SG_API_KEY}"}
 
-        uri = "{}/api/v1/orgs/{}/runnergroups/{}/runner_status/".format(
-            self.SG_BASE_URI, self.SG_ORG, self.SG_RUNNER_GROUP
-        )
+        uri = f"{self.SG_BASE_URI}/api/v1/orgs/{self.SG_ORG}/runnergroups/{self.SG_RUNNER_GROUP}/runner_status/"
 
         res = requests.post(uri, payload, headers=headers)
         res.raise_for_status()
 
-    def _fetch_vms_in_draining_state(self) -> List[Dict]:
+    def _fetch_vms_in_draining_state(self) -> List[SGRunner]:
         """API call to get if vm's are in draining state
         Returns VM's that are in draining state
         """
