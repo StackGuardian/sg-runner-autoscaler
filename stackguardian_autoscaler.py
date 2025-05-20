@@ -136,7 +136,7 @@ class StackGuardianAutoscaler:
         # cooldown
         last_scale_out_timestamp = self.cloud_service.get_last_scale_out_event()
         timestamp_now = datetime.now()
-        if not last_scale_out_timestamp and (
+        if last_scale_out_timestamp is not None and (
             timestamp_now - last_scale_out_timestamp
             < self.scale_in_cooldown_duration
         ):
@@ -184,7 +184,7 @@ class StackGuardianAutoscaler:
         last_scale_in_timestamp = self.cloud_service.get_last_scale_in_event()
         timestamp_now = datetime.now()
         timestamp_now.isocalendar()
-        if not last_scale_in_timestamp and (
+        if last_scale_in_timestamp is not None and (
             timestamp_now - last_scale_in_timestamp
             < self.scale_in_cooldown_duration
         ):

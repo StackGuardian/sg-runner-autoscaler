@@ -170,7 +170,7 @@ class AzureService:
         logging.info(f"VMSS instance count updated to {async_vmss_update}")
 
     def _is_vm_scale_in_protected(self, vm: VirtualMachineScaleSetVM) -> bool:
-        if not vm.protection_policy:
+        if vm.protection_policy is not None:
             return vm.protection_policy.protect_from_scale_in
         return False
 
@@ -219,7 +219,7 @@ class AzureService:
         last_scale_in_timestamp = self.fetch_blob_content(
             self.SCALE_IN_TIMESTAMP_BLOB_NAME
         )
-        if not last_scale_in_timestamp:
+        if last_scale_in_timestamp is not None:
             timestamp = datetime.datetime.fromisoformat(last_scale_in_timestamp)
             return timestamp
 
@@ -236,7 +236,7 @@ class AzureService:
         last_scale_out_timestamp = self.fetch_blob_content(
             self.SCALE_OUT_TIMESTAMP_BLOB_NAME
         )
-        if not last_scale_out_timestamp:
+        if last_scale_out_timestamp is not None:
             timestamp = datetime.datetime.fromisoformat(
                 last_scale_out_timestamp
             )
