@@ -49,7 +49,7 @@ class CloudService(ABC):
         """
 
     @abstractmethod
-    def set_autoscale_vms(self):
+    def set_autoscale_vms(self, count_of_vms: int):
         """
         Set the number of desired number of VM's in the autoscale service
         provided by the cloud service
@@ -57,7 +57,7 @@ class CloudService(ABC):
         pass
 
     @abstractmethod
-    def count_of_existing_vms(self):
+    def count_of_existing_vms(self) -> int:
         """
         Get the existing number of VM's or runners in the cloud
         """
