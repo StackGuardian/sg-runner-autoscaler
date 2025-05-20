@@ -136,7 +136,7 @@ class StackGuardianAutoscaler:
         # cooldown
         last_scale_out_timestamp = self.cloud_service.get_last_scale_out_event()
         timestamp_now = datetime.now()
-        if last_scale_out_timestamp != None and (
+        if not last_scale_out_timestamp and (
             timestamp_now - last_scale_out_timestamp
             < self.scale_in_cooldown_duration
         ):
@@ -151,7 +151,7 @@ class StackGuardianAutoscaler:
         has_scaled_out = False
         # if yes remove vm equal to scale_out_step from draining state
         if len(draining_virtual_machines) >= self.SCALE_OUT_STEP:
-            for sg_runner in draining_virtual_machines[0 : self.SCALE_OUT_STEP]:
+            for sg_runner in draining_virtual_machines[0:self.SCALE_OUT_STEP]:
                 self._update_sg_runner_status(sg_runner, "ACTIVE")
             has_scaled_out = True
         # remove all from draining state and add the number of VM's after
@@ -184,7 +184,7 @@ class StackGuardianAutoscaler:
         last_scale_in_timestamp = self.cloud_service.get_last_scale_in_event()
         timestamp_now = datetime.now()
         timestamp_now.isocalendar()
-        if last_scale_in_timestamp != None and (
+        if not last_scale_in_timestamp and (
             timestamp_now - last_scale_in_timestamp
             < self.scale_in_cooldown_duration
         ):
@@ -282,7 +282,7 @@ class StackGuardianAutoscaler:
             "QueuedWorkflowsCount"
         )
 
-        if queued_jobs == None:
+        if queued_jobs is None:
             raise Exception("Failed to fetch queued jobs")
 
         self.queued_jobs = queued_jobs

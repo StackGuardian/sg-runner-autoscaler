@@ -1,9 +1,8 @@
 import datetime
-from operator import truediv
 import os
 import io
 import logging
-from typing import List, Dict
+from typing import List
 
 from azure.core.exceptions import ResourceNotFoundError
 
@@ -92,7 +91,7 @@ class AzureService:
     ):
         try:
             # Update the VM instance with the new protection policy
-            vm_updated: LROPoller[VirtualMachineScaleSetVM] = (
+            _: LROPoller[VirtualMachineScaleSetVM] = (
                 self.compute_client.virtual_machine_scale_set_vms.begin_update(
                     self.AZURE_RESOURCE_GROUP_NAME,
                     self.AZURE_VMSS_NAME,
@@ -130,7 +129,7 @@ class AzureService:
 
             return decoded_content
         except ResourceNotFoundError as e:
-            logging.info(f"blob {blob_name} not found")
+            logging.info(f"blob {blob_name} not found: {e}")
             return None
         except AzureError as e:
             logging.info(f"STACKGUARDIAN: Error fetching blob {e}")
@@ -155,31 +154,6 @@ class AzureService:
             logging.info(f"STACKGUARDIAN: An error occurred: {e}")
             raise e
 
-    def update_vmss_vm(
-        self,
-        vm: VirtualMachineScaleSetVM,
-    ):
-        try:
-            # Update the VM instance with the new protection policy
-            vm_updated: LROPoller[VirtualMachineScaleSetVM] = (
-                self.compute_client.virtual_machine_scale_set_vms.begin_update(
-                    self.AZURE_RESOURCE_GROUP_NAME,
-                    self.AZURE_VMSS_NAME,
-                    vm.instance_id,
-                    vm,
-                )
-            )
-
-            logging.info(
-                f"STACKGUARDIAN: Scale-in protection has been enabled for VM: {vm.name}"
-            )
-
-        except AzureError as e:
-            logging.info(
-                f"STACKGUARDIAN: An error occurred while modifying scale-in protection: {str(e)}"
-            )
-            raise e
-
     def set_autoscale_vms(self, count):
         """Reduce scale set sku capacity"""
         logging.info(f"STACKGUARDIAN: set number of VM's to {count}")
@@ -196,7 +170,7 @@ class AzureService:
         logging.info(f"VMSS instance count updated to {async_vmss_update}")
 
     def _is_vm_scale_in_protected(self, vm: VirtualMachineScaleSetVM) -> bool:
-        if vm.protection_policy != None:
+        if not vm.protection_policy:
             return vm.protection_policy.protect_from_scale_in
         return False
 
@@ -221,7 +195,7 @@ class AzureService:
             f"STACKGUARDIAN: remove scale in protection from {sg_runner.computer_name}"
         )
         vm: VirtualMachineScaleSetVM = self._find_azure_vm(sg_runner)
-        if vm == None:
+        if vm is None:
             logging.info(
                 f"Azure VM for the stackguardian runner {sg_runner} does not exist"
             )
@@ -245,7 +219,7 @@ class AzureService:
         last_scale_in_timestamp = self.fetch_blob_content(
             self.SCALE_IN_TIMESTAMP_BLOB_NAME
         )
-        if last_scale_in_timestamp != None:
+        if not last_scale_in_timestamp:
             timestamp = datetime.datetime.fromisoformat(last_scale_in_timestamp)
             return timestamp
 
@@ -262,7 +236,7 @@ class AzureService:
         last_scale_out_timestamp = self.fetch_blob_content(
             self.SCALE_OUT_TIMESTAMP_BLOB_NAME
         )
-        if last_scale_out_timestamp != None:
+        if not last_scale_out_timestamp:
             timestamp = datetime.datetime.fromisoformat(
                 last_scale_out_timestamp
             )
