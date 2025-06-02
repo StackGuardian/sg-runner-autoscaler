@@ -220,7 +220,9 @@ class AzureService:
             self.SCALE_IN_TIMESTAMP_BLOB_NAME
         )
         if last_scale_in_timestamp is not None:
-            timestamp = datetime.datetime.fromisoformat(last_scale_in_timestamp)
+            timestamp = datetime.datetime.fromisoformat(
+                last_scale_in_timestamp
+            )
             return timestamp
 
     def set_last_scale_out_event(self, timestamp: datetime.datetime):

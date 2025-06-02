@@ -66,8 +66,8 @@ class CloudService(ABC):
     @abstractmethod
     def add_scale_in_protection(self, sg_runner: SGRunner):
         """
-        Add protection so that a scale in event or reduction in the capapcity of
-        a autoscale group does not terminate this VM
+        Add protection so that a scale in event or reduction in the capapcity
+        of a autoscale group does not terminate this VM
         """
         pass
 
@@ -134,7 +134,9 @@ class StackGuardianAutoscaler:
         )
 
         # cooldown
-        last_scale_out_timestamp = self.cloud_service.get_last_scale_out_event()
+        last_scale_out_timestamp = (
+            self.cloud_service.get_last_scale_out_event()
+        )
         timestamp_now = datetime.now()
         if last_scale_out_timestamp is not None and (
             timestamp_now - last_scale_out_timestamp
@@ -151,7 +153,9 @@ class StackGuardianAutoscaler:
         has_scaled_out = False
         # if yes remove vm equal to scale_out_step from draining state
         if len(draining_virtual_machines) >= self.SCALE_OUT_STEP:
-            for sg_runner in draining_virtual_machines[0:self.SCALE_OUT_STEP]:
+            for sg_runner in draining_virtual_machines[
+                0 : self.SCALE_OUT_STEP
+            ]:
                 self._update_sg_runner_status(sg_runner, "ACTIVE")
             has_scaled_out = True
         # remove all from draining state and add the number of VM's after
@@ -272,7 +276,9 @@ class StackGuardianAutoscaler:
 
         self.sg_runner_group = res.json()
         sg_runners = []
-        for runner in self.sg_runner_group.get("msg").get("ContainerInstances"):
+        for runner in self.sg_runner_group.get("msg").get(
+            "ContainerInstances"
+        ):
             sg_runners.append(SGRunner(runner))
 
         self.sg_runners = sg_runners

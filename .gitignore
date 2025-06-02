@@ -163,3 +163,5 @@ cython_debug/
 
 local.settings.json
 .vscode
+
+.python_packages
