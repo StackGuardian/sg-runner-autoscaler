@@ -1,0 +1,94 @@
+# Multi-stage build for AWS Lambda with PyInstaller bundling
+# Stage 1: Build stage with PyInstaller - use same base as Lambda runtime
+FROM public.ecr.aws/lambda/python:3.13 as builder
+
+# Install system dependencies for PyInstaller
+RUN microdnf update -y && microdnf install -y \
+    gcc \
+    gcc-c++ \
+    binutils \
+    glibc-devel \
+    && microdnf clean all
+
+# Install PyInstaller and build dependencies
+RUN pip install --no-cache-dir \
+    pyinstaller>=6.0.0 \
+    wheel
+
+# Set working directory
+WORKDIR /build
+
+# Copy requirements and install dependencies
+COPY aws_requirements.txt .
+RUN pip install --no-cache-dir -r aws_requirements.txt
+
+# Copy source code
+COPY stackguardian_autoscaler.py .
+COPY aws_service.py .
+COPY lambda.py .
+# COPY lambda_wrapper.py .
+
+# Build the executable with PyInstaller using inline parameters
+RUN pyinstaller \
+    --clean \
+    --onefile \
+    --strip \
+    --name lambda_handler \
+    --console \
+    --hidden-import stackguardian_autoscaler \
+    --hidden-import aws_service \
+    --hidden-import boto3 \
+    --hidden-import botocore \
+    --hidden-import certifi \
+    --hidden-import charset_normalizer \
+    --hidden-import idna \
+    --hidden-import jmespath \
+    --hidden-import mypy_boto3 \
+    --hidden-import mypy_boto3_autoscaling \
+    --hidden-import mypy_boto3_s3 \
+    --hidden-import python_dateutil \
+    --hidden-import requests \
+    --hidden-import s3transfer \
+    --hidden-import six \
+    --hidden-import typing_extensions \
+    --hidden-import urllib3 \
+    --hidden-import json \
+    --hidden-import datetime \
+    --hidden-import logging \
+    --hidden-import os \
+    --hidden-import typing \
+    --hidden-import abc \
+    lambda.py
+
+# Stage 2: AWS Lambda runtime
+FROM public.ecr.aws/lambda/python:3.13
+
+# Copy the compiled executable and wrapper
+COPY lambda_wrapper.py ${LAMBDA_TASK_ROOT}/
+COPY --from=builder /build/dist/lambda_handler ${LAMBDA_TASK_ROOT}/
+
+# Make executable
+RUN chmod +x ${LAMBDA_TASK_ROOT}/lambda_handler
+
+# Security cleanup
+RUN find ${LAMBDA_TASK_ROOT} -type f \( \
+    -name "*.py" -o \
+    -name "*.pyx" -o \
+    -name "*.pxd" -o \
+    -name "*.c" -o \
+    -name "*.h" -o \
+    -name "*.md" -o \
+    -name "*.txt" -o \
+    -name "*.rst" -o \
+    -name "LICENSE*" -o \
+    -name "NOTICE*" -o \
+    -name "README*" -o \
+    -name "CHANGELOG*" \
+    \) ! -name "lambda_wrapper.py" -delete 2>/dev/null || true
+
+# Set restrictive permissions
+RUN chmod 755 ${LAMBDA_TASK_ROOT}/lambda_handler && \
+    chmod 644 ${LAMBDA_TASK_ROOT}/lambda_wrapper.py
+
+# Use the wrapper as the handler
+CMD ["lambda_wrapper.lambda_handler"]
