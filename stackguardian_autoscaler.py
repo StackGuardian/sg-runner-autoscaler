@@ -84,13 +84,13 @@ class StackGuardianAutoscaler:
         self.SG_BASE_URI = os.getenv("SG_BASE_URI")
         self.SG_API_KEY = os.getenv("SG_API_KEY")
 
-        self.SCALE_IN_THRESHOLD = int(os.getenv("SCALE_IN_THRESHOLD"))
-        self.SCALE_IN_STEP = int(os.getenv("SCALE_IN_STEP"))
+        self.SCALE_IN_THRESHOLD = int(os.getenv("SCALE_IN_THRESHOLD", 3))
+        self.SCALE_IN_STEP = int(os.getenv("SCALE_IN_STEP", 1))
 
-        self.SCALE_OUT_THRESHOLD = int(os.getenv("SCALE_OUT_THRESHOLD"))
-        self.SCALE_OUT_STEP = int(os.getenv("SCALE_OUT_STEP"))
+        self.SCALE_OUT_THRESHOLD = int(os.getenv("SCALE_OUT_THRESHOLD", 5))
+        self.SCALE_OUT_STEP = int(os.getenv("SCALE_OUT_STEP", 1))
 
-        self.MIN_RUNNERS = 0
+        self.MIN_RUNNERS = int(os.getenv("MIN_RUNNERS", 0))
 
         self.SG_ORG = os.getenv("SG_ORG")
         self.SG_RUNNER_GROUP = os.getenv("SG_RUNNER_GROUP")
@@ -98,10 +98,10 @@ class StackGuardianAutoscaler:
         self.cloud_service = cloud_service
 
         self.scale_in_cooldown_duration = timedelta(
-            minutes=int(os.getenv("SCALE_IN_COOLDOWN_DURATION"))
+            minutes=int(os.getenv("SCALE_IN_COOLDOWN_DURATION", 5))
         )
         self.scale_out_cooldown_duration = timedelta(
-            minutes=int(os.getenv("SCALE_OUT_COOLDOWN_DURATION"))
+            minutes=int(os.getenv("SCALE_OUT_COOLDOWN_DURATION", 5))
         )
 
         self.sg_runner_group = None
