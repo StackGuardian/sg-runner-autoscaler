@@ -17,11 +17,13 @@ class AwsService(CloudService):
 
         self.ASG_NAME = os.getenv("AWS_ASG_NAME")
         self.BUCKET_NAME = os.getenv("AWS_BUCKET_NAME")
-        self.SCALE_IN_TIMESTAMP_OBJECT_NAME = os.getenv(
-            "SCALE_IN_TIMESTAMP_BLOB_NAME"
+        sg_org = os.getenv("SG_ORG")
+        sg_runnergroup = os.getenv("SG_RUNNER_GROUP")
+        self.SCALE_IN_TIMESTAMP_OBJECT_NAME = (
+            f"orgs/{sg_org}/runner_groups/{sg_runnergroup}/scale_in_timestamp"
         )
-        self.SCALE_OUT_TIMESTAMP_OBJECT_NAME = os.getenv(
-            "SCALE_OUT_TIMESTAMP_BLOB_NAME"
+        self.SCALE_OUT_TIMESTAMP_OBJECT_NAME = (
+            f"orgs/{sg_org}/runner_groups/{sg_runnergroup}/scale_out_timestamp"
         )
 
         self.asg_vms = self._get_vms_in_asg()

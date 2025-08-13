@@ -121,7 +121,10 @@ class StackGuardianAutoscaler:
             self.scale_out()
             # incase there are any draining VM's left to delete even after scaling out depending on the scale_out_step and scale_in_step.
             self.terminate_vms()
-        elif self.queued_jobs <= self.SCALE_IN_THRESHOLD:
+        elif (
+            self.queued_jobs <= self.SCALE_IN_THRESHOLD
+            and len(sg_runners) > self.MIN_RUNNERS
+        ):
             self.scale_in(self.SCALE_IN_STEP)
             # delete draining VM's
             self.terminate_vms()
