@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import boto3
 import requests
 import os
 from datetime import datetime, timedelta
@@ -94,6 +95,8 @@ class StackGuardianAutoscaler:
 
         self.SG_ORG = os.getenv("SG_ORG")
         self.SG_RUNNER_GROUP = os.getenv("SG_RUNNER_GROUP")
+
+        self.SG_RUNNER_TYPE = os.getenv("SG_RUNNER_TYPE")
 
         self.cloud_service = cloud_service
 
@@ -278,6 +281,7 @@ class StackGuardianAutoscaler:
         res.raise_for_status()
 
         self.sg_runner_group = res.json()
+
         sg_runners = []
         for runner in self.sg_runner_group.get("msg").get(
             "ContainerInstances"
@@ -287,8 +291,15 @@ class StackGuardianAutoscaler:
         self.sg_runners = sg_runners
 
     def _refresh_queued_jobs(self) -> int:
+        if self.SG_RUNNER_TYPE == "shared-external":
+            queued_workflows_count_key = "EcsTaskFailAgentCount"
+        elif self.SG_RUNNER_TYPE == "external":
+            queued_workflows_count_key = "QueuedWorkflowsCount"
+        else:
+            raise Exception("Invalid runner type")
+
         queued_jobs = self.sg_runner_group.get("msg").get(
-            "QueuedWorkflowsCount"
+            queued_workflows_count_key
         )
 
         if queued_jobs is None:
