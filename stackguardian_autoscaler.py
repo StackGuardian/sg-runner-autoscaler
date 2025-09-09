@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-import boto3
 import requests
 import os
 from datetime import datetime, timedelta
