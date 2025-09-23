@@ -1,6 +1,9 @@
 # Multi-stage build for AWS Lambda with PyInstaller bundling
 # Stage 1: Build stage with PyInstaller - use same base as Lambda runtime
-FROM public.ecr.aws/lambda/python:3.13 as builder
+FROM public.ecr.aws/lambda/python:3.13 AS builder
+
+ARG type="shared-external"
+ENV SG_RUNNER_TYPE="${type}"
 
 # Install system dependencies for PyInstaller
 RUN microdnf update -y && microdnf install -y \
