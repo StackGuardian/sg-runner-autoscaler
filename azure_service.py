@@ -30,6 +30,8 @@ class AzureService:
         self.AZURE_BLOB_STORAGE_CONN_STRING = os.getenv(
             "AZURE_BLOB_STORAGE_CONN_STRING"
         )
+        self.AZURE_STORAGE_ACCOUNT_NAME = os.getenv("AZURE_STORAGE_ACCOUNT_NAME")
+        self.AZURE_STORAGE_ACCOUNT_URL = os.getenv("AZURE_STORAGE_ACCOUNT_URL")
         self.AZURE_BLOB_CONTAINER_NAME = os.getenv("AZURE_BLOB_CONTAINER_NAME")
         self.SCALE_IN_TIMESTAMP_BLOB_NAME = os.getenv(
             "SCALE_IN_TIMESTAMP_BLOB_NAME"
@@ -47,9 +49,22 @@ class AzureService:
             api_version=self.AZURE_API_VERSION,
         )
 
-        self.blob_service_client = BlobServiceClient.from_connection_string(
-            conn_str=self.AZURE_BLOB_STORAGE_CONN_STRING
-        )
+        # Use RBAC if storage account URL or name is provided, otherwise fall back to connection string
+        if self.AZURE_STORAGE_ACCOUNT_URL:
+            self.blob_service_client = BlobServiceClient(
+                account_url=self.AZURE_STORAGE_ACCOUNT_URL,
+                credential=self.cred
+            )
+        elif self.AZURE_STORAGE_ACCOUNT_NAME:
+            account_url = f"https://{self.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
+            self.blob_service_client = BlobServiceClient(
+                account_url=account_url,
+                credential=self.cred
+            )
+        else:
+            self.blob_service_client = BlobServiceClient.from_connection_string(
+                conn_str=self.AZURE_BLOB_STORAGE_CONN_STRING
+            )
         self.container_client = self.blob_service_client.get_container_client(
             self.AZURE_BLOB_CONTAINER_NAME
         )
