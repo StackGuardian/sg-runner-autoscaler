@@ -1,9 +1,10 @@
-from abc import ABC, abstractmethod
-import requests
-import os
-from datetime import datetime, timedelta
 import logging
-from typing import List, Dict
+import os
+from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
+from typing import Dict, List
+
+import requests
 
 
 class SGRunner:
@@ -91,6 +92,17 @@ class StackGuardianAutoscaler:
         self.SCALE_OUT_STEP = int(os.getenv("SCALE_OUT_STEP", 1))
 
         self.MIN_RUNNERS = int(os.getenv("MIN_RUNNERS", 0))
+        self.MAX_RUNNERS = int(
+            os.getenv("MAX_RUNNERS", -1)  # -1 means no limit
+        )
+
+        if self.MAX_RUNNERS >= 0 and self.MAX_RUNNERS < self.MIN_RUNNERS:
+            logging.error(
+                f"MAX_RUNNERS ({self.MAX_RUNNERS}) is less than MIN_RUNNERS ({self.MIN_RUNNERS})."
+            )
+            raise Exception(
+                "Invalid configuration: MAX_RUNNERS cannot be lower than MIN_RUNNERS."
+            )
 
         self.SG_ORG = os.getenv("SG_ORG")
         self.SG_RUNNER_GROUP = os.getenv("SG_RUNNER_GROUP")
@@ -113,7 +125,13 @@ class StackGuardianAutoscaler:
     def start(self):
         logging.info("STACKGUARDIAN: starting the autoscale script")
         sg_runners = self.sg_runners
-        if (
+
+        # Check if already at MAX_RUNNERS (skip scale-out conditions if at max)
+        at_max_runners = (
+            self.MAX_RUNNERS >= 0 and len(sg_runners) >= self.MAX_RUNNERS
+        )
+
+        if not at_max_runners and (
             self.queued_jobs >= self.SCALE_OUT_THRESHOLD
             or len(sg_runners) < self.MIN_RUNNERS
             or (self.queued_jobs > 0 and len(sg_runners) == 0)
@@ -133,7 +151,7 @@ class StackGuardianAutoscaler:
 
     def scale_out(self):
         logging.info(
-            f"STACKGUARDIAN: scale out: queued jobs {self.queued_jobs}, number of sg runners {len(self.sg_runners)}, min runners {self.MIN_RUNNERS}, scale out threshold {self.SCALE_OUT_THRESHOLD}"
+            f"STACKGUARDIAN: scale out: queued jobs {self.queued_jobs}, number of sg runners {len(self.sg_runners)}, min runners {self.MIN_RUNNERS}, max runners {self.MAX_RUNNERS}, scale out threshold {self.SCALE_OUT_THRESHOLD}"
         )
 
         # cooldown
@@ -153,24 +171,39 @@ class StackGuardianAutoscaler:
         # Check if there are VM's in draining state
         draining_virtual_machines = self._fetch_vms_in_draining_state()
 
+        # Calculate how many runners to add using author's pattern
+        active_runners = len(self.sg_runners) - len(draining_virtual_machines)
+
+        if self.MAX_RUNNERS >= 0:
+            scale_runner_to = min(
+                self.MAX_RUNNERS, active_runners + self.SCALE_OUT_STEP
+            )
+            runners_to_add = scale_runner_to - active_runners
+            if runners_to_add <= 0:
+                logging.info(
+                    f"STACKGUARDIAN: already at MAX_RUNNERS ({self.MAX_RUNNERS}), skipping scale out"
+                )
+                return
+        else:
+            runners_to_add = self.SCALE_OUT_STEP
+
         has_scaled_out = False
-        # if yes remove vm equal to scale_out_step from draining state
-        if len(draining_virtual_machines) >= self.SCALE_OUT_STEP:
-            for sg_runner in draining_virtual_machines[
-                0 : self.SCALE_OUT_STEP
-            ]:
+        # if yes remove vm equal to runners_to_add from draining state
+        if len(draining_virtual_machines) >= runners_to_add:
+            for sg_runner in draining_virtual_machines[0:runners_to_add]:
                 self._update_sg_runner_status(sg_runner, "ACTIVE")
             has_scaled_out = True
         # remove all from draining state and add the number of VM's after
-        # deducting the number of draining VM's from scale_out_step
-        elif len(draining_virtual_machines) < self.SCALE_OUT_STEP:
+        # deducting the number of draining VM's from runners_to_add
+        elif len(draining_virtual_machines) < runners_to_add:
             for sg_runner in draining_virtual_machines:
                 self._update_sg_runner_status(sg_runner, "ACTIVE")
-            self.cloud_service.set_autoscale_vms(
-                self.cloud_service.count_of_existing_vms()
-                + self.SCALE_OUT_STEP
-                - len(draining_virtual_machines),
-            )
+            new_vms_to_add = runners_to_add - len(draining_virtual_machines)
+            if new_vms_to_add > 0:
+                self.cloud_service.set_autoscale_vms(
+                    self.cloud_service.count_of_existing_vms()
+                    + new_vms_to_add,
+                )
             has_scaled_out = True
 
         if has_scaled_out:
