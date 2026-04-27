@@ -92,13 +92,17 @@ class StackGuardianAutoscaler:
         self.SCALE_OUT_STEP = int(os.getenv("SCALE_OUT_STEP", 1))
 
         self.MIN_RUNNERS = int(os.getenv("MIN_RUNNERS", 0))
-        self.MAX_RUNNERS = int(os.getenv("MAX_RUNNERS", -1))  # -1 means no limit
+        self.MAX_RUNNERS = int(
+            os.getenv("MAX_RUNNERS", -1)  # -1 means no limit
+        )
 
-        if self.MAX_RUNNERS >= 0 and self.MAX_RUNNERS != -1 and self.MAX_RUNNERS < self.MIN_RUNNERS:
+        if self.MAX_RUNNERS >= 0 and self.MAX_RUNNERS < self.MIN_RUNNERS:
             logging.error(
                 f"MAX_RUNNERS ({self.MAX_RUNNERS}) is less than MIN_RUNNERS ({self.MIN_RUNNERS})."
             )
-            raise Exception("Invalid configuration: MAX_RUNNERS cannot be lower than MIN_RUNNERS.")
+            raise Exception(
+                "Invalid configuration: MAX_RUNNERS cannot be lower than MIN_RUNNERS."
+            )
 
         self.SG_ORG = os.getenv("SG_ORG")
         self.SG_RUNNER_GROUP = os.getenv("SG_RUNNER_GROUP")
@@ -127,13 +131,10 @@ class StackGuardianAutoscaler:
             self.MAX_RUNNERS >= 0 and len(sg_runners) >= self.MAX_RUNNERS
         )
 
-        if (
-            not at_max_runners
-            and (
-                self.queued_jobs >= self.SCALE_OUT_THRESHOLD
-                or len(sg_runners) < self.MIN_RUNNERS
-                or (self.queued_jobs > 0 and len(sg_runners) == 0)
-            )
+        if not at_max_runners and (
+            self.queued_jobs >= self.SCALE_OUT_THRESHOLD
+            or len(sg_runners) < self.MIN_RUNNERS
+            or (self.queued_jobs > 0 and len(sg_runners) == 0)
         ):
             self.scale_out()
             # incase there are any draining VM's left to delete even after scaling out depending on the scale_out_step and scale_in_step.
@@ -174,7 +175,9 @@ class StackGuardianAutoscaler:
         active_runners = len(self.sg_runners) - len(draining_virtual_machines)
 
         if self.MAX_RUNNERS >= 0:
-            scale_runner_to = min(self.MAX_RUNNERS, active_runners + self.SCALE_OUT_STEP)
+            scale_runner_to = min(
+                self.MAX_RUNNERS, active_runners + self.SCALE_OUT_STEP
+            )
             runners_to_add = scale_runner_to - active_runners
             if runners_to_add <= 0:
                 logging.info(
@@ -198,7 +201,8 @@ class StackGuardianAutoscaler:
             new_vms_to_add = runners_to_add - len(draining_virtual_machines)
             if new_vms_to_add > 0:
                 self.cloud_service.set_autoscale_vms(
-                    self.cloud_service.count_of_existing_vms() + new_vms_to_add,
+                    self.cloud_service.count_of_existing_vms()
+                    + new_vms_to_add,
                 )
             has_scaled_out = True
 
