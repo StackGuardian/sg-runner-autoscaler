@@ -9,7 +9,7 @@ REGISTRY = $(ACCOUNT_ID).dkr.ecr.$(BUILD_REGION).amazonaws.com
 FULL_IMAGE = $(REGISTRY)/$(IMAGE_NAME)
 
 PLATFORM = linux/amd64
-DOCKERFILE = Dockerfile.pyinstaller
+DOCKERFILE = Dockerfile
 DOCKER_BUILD_ARGS = --push --pull --platform $(PLATFORM) --provenance=false
 SG_RUNNER_TYPE = shared-external
 
