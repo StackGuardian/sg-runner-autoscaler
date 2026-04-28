@@ -1,5 +1,5 @@
 azure-common==1.1.28
-azure-core==1.32.0
+azure-core==1.38.0
 azure-functions==1.21.3
 azure-identity==1.19.0
 azure-mgmt-compute==33.0.0
